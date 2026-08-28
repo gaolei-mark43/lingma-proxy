@@ -494,6 +494,8 @@ func LooksLikeRefusal(text string) bool {
 		"cannot access your local machine",
 		"can't access your local machine",
 		"没有可用的工具",
+		"无工具可用",
+		"没有可用的命令执行工具",
 		"无法调用",
 		"工具不可用",
 		"不能调用工具",
