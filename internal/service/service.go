@@ -1012,7 +1012,7 @@ func (s *Service) applyToolEmulation(
 			result.Text = remaining
 			result.ToolCalls = calls
 		} else if shouldRetryTooling(req.ToolChoice, result.Text) {
-			hintPrompt := prompt + "\n\n" + toolemulation.ForceToolingPrompt(req.ToolChoice)
+			hintPrompt := toolemulation.ForceToolingRetryPrompt(latestUserTask(req), req.Tools, req.ToolChoice)
 			retryText := ""
 			if retry != nil {
 				text, outputTokens, retryErr := retry(hintPrompt)
@@ -1043,6 +1043,19 @@ func (s *Service) applyToolEmulation(
 			}
 		}
 	}
+}
+
+func latestUserTask(req ChatRequest) string {
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		message := req.Messages[i]
+		if !strings.EqualFold(strings.TrimSpace(message.Role), "user") {
+			continue
+		}
+		if text := strings.TrimSpace(message.Text); text != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 func shouldRetryTooling(choice toolemulation.ToolChoice, text string) bool {
