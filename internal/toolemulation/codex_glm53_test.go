@@ -21,7 +21,7 @@ func TestInjectToolingFramesToolsAsExternalExecutorProtocol(t *testing.T) {
 		"IMPORTANT EXTERNAL TOOL PROTOCOL",
 		"NOT QoderCN/Lingma native tools",
 		"external Codex/client executor",
-		"Native QoderCN/Lingma tool availability is irrelevant",
+		"do not treat native tool availability as relevant",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)
