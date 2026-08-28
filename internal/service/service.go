@@ -873,6 +873,9 @@ func (s *Service) generateLocked(
 	if err != nil {
 		return nil, err
 	}
+	if len(req.Tools) > 0 && req.ToolChoice.Mode != "none" {
+		prompt = appendExternalExecutorUserTurn(prompt)
+	}
 	if strings.TrimSpace(prompt) == "" {
 		return nil, errors.New("empty user message")
 	}
@@ -1441,6 +1444,21 @@ func imageExtension(mediaType string) string {
 	default:
 		return ".jpg"
 	}
+}
+
+func appendExternalExecutorUserTurn(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	instruction := strings.TrimSpace(toolemulation.ExternalExecutorTurnHint())
+	if instruction == "" {
+		return prompt
+	}
+	if strings.HasSuffix(prompt, "Assistant:") {
+		prompt = strings.TrimSpace(strings.TrimSuffix(prompt, "Assistant:"))
+	}
+	if prompt == "" {
+		return "User: " + instruction + "\n\nAssistant:"
+	}
+	return prompt + "\n\nUser: " + instruction + "\n\nAssistant:"
 }
 
 func buildLingmaPrompt(req ChatRequest, mode SessionMode, emulateTools bool) (string, error) {
