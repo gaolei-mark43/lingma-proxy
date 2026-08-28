@@ -132,6 +132,24 @@ func TestBuildLingmaPromptInjectsToolingWhenEmulationEnabled(t *testing.T) {
 	}
 }
 
+func TestAppendExternalExecutorUserTurnPlacesHintAfterSystemPrompt(t *testing.T) {
+	base := "User: 执行 pwd\n\nSystem tool instructions\n\nAssistant:"
+	got := appendExternalExecutorUserTurn(base)
+
+	if !strings.Contains(got, "User: 请继续处理上一条用户请求") {
+		t.Fatalf("missing external executor user turn:\n%s", got)
+	}
+	if !strings.HasSuffix(got, "Assistant:") {
+		t.Fatalf("prompt should end with Assistant:, got:\n%s", got)
+	}
+	if strings.Count(got, "Assistant:") != 1 {
+		t.Fatalf("prompt should contain exactly one final Assistant: marker, got:\n%s", got)
+	}
+	if strings.Index(got, "System tool instructions") > strings.Index(got, "User: 请继续处理上一条用户请求") {
+		t.Fatalf("external executor hint must be the most recent user turn:\n%s", got)
+	}
+}
+
 func TestShouldEmulateRemoteToolsForToolRequests(t *testing.T) {
 	req := ChatRequest{
 		Messages: []ChatMessage{{Role: "user", Text: "查看项目结构"}},
