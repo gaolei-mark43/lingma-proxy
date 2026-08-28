@@ -149,6 +149,8 @@ func NewServer(addr string, svc *service.Service) *Server {
 	mux.HandleFunc("/debug/requests", s.handleDebugRequests)
 	mux.HandleFunc("/debug/access-logs", s.handleDebugLogs)
 	mux.HandleFunc("/debug/app-logs", s.handleDebugAppLogs)
+	mux.HandleFunc("/debug/tool-traces", s.handleDebugToolTraces)
+	mux.HandleFunc("/api/tool-traces", s.handleDebugToolTraces)
 	mux.HandleFunc("/api/requests", s.handleDebugRequests)
 	mux.HandleFunc("/api/access-logs", s.handleDebugLogs)
 	mux.HandleFunc("/api/app-logs", s.handleDebugAppLogs)
@@ -304,6 +306,45 @@ func (s *Server) handleDebugLogs(w http.ResponseWriter, r *http.Request) {
 		"kind":    "http_access_logs",
 		"count":   len(logs),
 		"logs":    logs,
+		"state":   s.svc.State(),
+	})
+}
+
+func (s *Server) handleDebugToolTraces(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeOpenAIError(w, http.StatusMethodNotAllowed, "invalid_request_error", "method not allowed")
+		return
+	}
+
+	limit := 50
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			switch {
+			case parsed < 1:
+				limit = 1
+			case parsed > 100:
+				limit = 100
+			default:
+				limit = parsed
+			}
+		}
+	}
+
+	traces := s.svc.ToolTraces(limit)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"service": "lingma-proxy",
+		"kind":    "tool_emulation_traces",
+		"count":   len(traces),
+		"traces":  traces,
 		"state":   s.svc.State(),
 	})
 }
