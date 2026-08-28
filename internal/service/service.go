@@ -142,6 +142,19 @@ type State struct {
 	SessionMode     SessionMode `json:"session_mode"`
 }
 
+type ToolTraceRecord struct {
+	Time            string   `json:"time"`
+	Stage           string   `json:"stage"`
+	ToolCount       int      `json:"tool_count,omitempty"`
+	ToolChoice      string   `json:"tool_choice,omitempty"`
+	ToolNames       []string `json:"tool_names,omitempty"`
+	Text            string   `json:"text,omitempty"`
+	RetryPrompt     string   `json:"retry_prompt,omitempty"`
+	RetryResponse   string   `json:"retry_response,omitempty"`
+	ParsedToolCalls []string `json:"parsed_tool_calls,omitempty"`
+	Error           string   `json:"error,omitempty"`
+}
+
 type Service struct {
 	cfg              Config
 	mu               sync.Mutex
@@ -154,6 +167,8 @@ type Service struct {
 	modelMap         map[string]string // official name -> internal id
 	remoteClient     *remote.Client
 	remoteProbeCache map[string]remoteModelProbeEntry
+	toolTraceMu      sync.RWMutex
+	toolTraces       []ToolTraceRecord
 }
 
 type promptRunResult struct {
@@ -242,6 +257,54 @@ func (s *Service) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.closeClientLocked()
+}
+
+func (s *Service) appendToolTrace(record ToolTraceRecord) {
+	record.Time = time.Now().Format(time.RFC3339Nano)
+	s.toolTraceMu.Lock()
+	defer s.toolTraceMu.Unlock()
+	s.toolTraces = append(s.toolTraces, record)
+	if len(s.toolTraces) > 100 {
+		s.toolTraces = append([]ToolTraceRecord(nil), s.toolTraces[len(s.toolTraces)-100:]...)
+	}
+}
+
+func (s *Service) ToolTraces(limit int) []ToolTraceRecord {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	s.toolTraceMu.RLock()
+	defer s.toolTraceMu.RUnlock()
+	start := len(s.toolTraces) - limit
+	if start < 0 {
+		start = 0
+	}
+	out := make([]ToolTraceRecord, len(s.toolTraces)-start)
+	copy(out, s.toolTraces[start:])
+	return out
+}
+
+func toolNames(tools []toolemulation.ToolDef) []string {
+	out := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		if name := strings.TrimSpace(tool.Name); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func toolCallNames(calls []toolemulation.ToolCall) []string {
+	out := make([]string, 0, len(calls))
+	for _, call := range calls {
+		if name := strings.TrimSpace(call.Name); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 func contextWithOptionalTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
@@ -1007,20 +1070,44 @@ func (s *Service) applyToolEmulation(
 	retry func(string) (string, int, error),
 ) {
 	if len(req.Tools) > 0 {
+		s.appendToolTrace(ToolTraceRecord{
+			Stage:      "initial_response",
+			ToolCount:  len(req.Tools),
+			ToolChoice: req.ToolChoice.Mode,
+			ToolNames:  toolNames(req.Tools),
+			Text:       result.Text,
+		})
 		calls, remaining, parseErr := toolemulation.ParseActionBlocks(result.Text, req.Tools, toolemulation.Config{})
 		if parseErr == nil && len(calls) > 0 {
 			result.Text = remaining
 			result.ToolCalls = calls
+			s.appendToolTrace(ToolTraceRecord{
+				Stage:           "initial_action_parsed",
+				ParsedToolCalls: toolCallNames(calls),
+			})
 		} else if shouldRetryTooling(req.ToolChoice, result.Text) {
 			hintPrompt := toolemulation.ForceToolingRetryPrompt(latestUserTask(req), req.Tools, req.ToolChoice)
+			s.appendToolTrace(ToolTraceRecord{
+				Stage:       "retry_triggered",
+				RetryPrompt: hintPrompt,
+			})
 			retryText := ""
 			if retry != nil {
 				text, outputTokens, retryErr := retry(hintPrompt)
 				if retryErr == nil {
 					retryText = text
+					s.appendToolTrace(ToolTraceRecord{
+						Stage:         "retry_response",
+						RetryResponse: retryText,
+					})
 					if outputTokens > 0 {
 						result.OutputTokens = outputTokens
 					}
+				} else {
+					s.appendToolTrace(ToolTraceRecord{
+						Stage: "retry_error",
+						Error: retryErr.Error(),
+					})
 				}
 			}
 			if retryText != "" {
@@ -1029,16 +1116,32 @@ func (s *Service) applyToolEmulation(
 					result.Text = retryRemaining
 					result.ToolCalls = retryCalls
 					result.OutputTokens = estimateTokens(retryText)
+					s.appendToolTrace(ToolTraceRecord{
+						Stage:           "retry_action_parsed",
+						ParsedToolCalls: toolCallNames(retryCalls),
+					})
 				} else if inferred := toolemulation.InferToolCallsFromText(retryText, req.Tools); len(inferred) > 0 {
 					result.Text = ""
 					result.ToolCalls = inferred
 					result.OutputTokens = estimateTokens(retryText)
+					s.appendToolTrace(ToolTraceRecord{
+						Stage:           "retry_action_inferred",
+						ParsedToolCalls: toolCallNames(inferred),
+					})
 				}
 			}
 			if len(result.ToolCalls) == 0 {
 				if inferred := toolemulation.InferToolCallsFromText(result.Text, req.Tools); len(inferred) > 0 {
 					result.Text = ""
 					result.ToolCalls = inferred
+					s.appendToolTrace(ToolTraceRecord{
+						Stage:           "initial_action_inferred",
+						ParsedToolCalls: toolCallNames(inferred),
+					})
+				} else {
+					s.appendToolTrace(ToolTraceRecord{
+						Stage: "tool_emulation_exhausted",
+					})
 				}
 			}
 		}
