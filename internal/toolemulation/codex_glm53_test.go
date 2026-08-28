@@ -42,6 +42,34 @@ func TestForceToolingPromptFramesExternalProtocol(t *testing.T) {
 	}
 }
 
+func TestForceToolingRetryPromptUsesFreshUserTaskAndCodexExecExample(t *testing.T) {
+	prompt := ForceToolingRetryPrompt(
+		"执行 pwd 和 git status，并告诉我结果",
+		[]ToolDef{{
+			Name: "exec_command",
+			InputSchema: map[string]any{
+				"properties": map[string]any{
+					"cmd": map[string]any{"type": "string"},
+				},
+				"required": []any{"cmd"},
+			},
+		}},
+		ToolChoice{Mode: "auto"},
+	)
+
+	for _, want := range []string{
+		"仅视为交给外部 Codex/client 执行器的纯文本 action 协议",
+		"执行 pwd 和 git status，并告诉我结果",
+		"use exec_command",
+		"\"cmd\": \"pwd\"",
+		"不要回答工具不可用",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("retry prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
 func TestInferToolCallsSupportsCodexExecCommandCmdArgument(t *testing.T) {
 	calls := InferToolCallsFromText(
 		"当前会话没有可用的命令执行工具。你可以运行 vm_stat 查看内存占用。",
