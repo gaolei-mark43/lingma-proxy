@@ -1,0 +1,69 @@
+name: Codex GLM53 Windows Test Build
+
+on:
+  push:
+    branches:
+      - "fix/codex-glm53-tools"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    name: Test and build Windows desktop
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Run Go tests
+        shell: pwsh
+        run: go test ./...
+
+      - name: Install Wails
+        shell: pwsh
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Install frontend dependencies
+        shell: pwsh
+        run: npm ci --prefix desktop/frontend
+
+      - name: Build Windows desktop
+        shell: pwsh
+        run: |
+          Push-Location desktop
+          wails build -platform windows/amd64 -clean -devtools -ldflags "-X main.devtoolsBuild=true"
+          Pop-Location
+
+      - name: Package Windows desktop
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem .\desktop\build\bin -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw "Desktop exe was not produced" }
+          if ($exe.Name -ne "LingmaProxy.exe") { throw "Unexpected desktop exe name: $($exe.Name)" }
+          $asset = "lingma-proxy-desktop_v1.6.12-glm53fix1_windows_amd64.zip"
+          Compress-Archive -Path $exe.FullName -DestinationPath $asset -Force
+          Get-FileHash $asset -Algorithm SHA256 | Format-List | Out-File "$asset.sha256.txt"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingma-proxy-desktop-v1.6.12-glm53fix1-windows-amd64
+          path: |
+            lingma-proxy-desktop_v1.6.12-glm53fix1_windows_amd64.zip
+            lingma-proxy-desktop_v1.6.12-glm53fix1_windows_amd64.zip.sha256.txt
+          retention-days: 14
