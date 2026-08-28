@@ -3,7 +3,7 @@ name: Codex GLM53 Windows Test Build
 on:
   push:
     branches:
-      - "fix/codex-glm53-tools"
+      - "fix/codex-glm53-tools-v2"
   workflow_dispatch:
 
 permissions:
@@ -81,15 +81,15 @@ jobs:
           $exe = Get-ChildItem .\desktop\build\bin -Filter *.exe | Select-Object -First 1
           if (-not $exe) { throw "Desktop exe was not produced" }
           if ($exe.Name -ne "LingmaProxy.exe") { throw "Unexpected desktop exe name: $($exe.Name)" }
-          $asset = "lingma-proxy-desktop_v1.6.12-glm53fix1_windows_amd64.zip"
+          $asset = "lingma-proxy-desktop_v1.6.12-glm53fix2_windows_amd64.zip"
           Compress-Archive -Path $exe.FullName -DestinationPath $asset -Force
           Get-FileHash $asset -Algorithm SHA256 | Format-List | Out-File "$asset.sha256.txt"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lingma-proxy-desktop-v1.6.12-glm53fix1-windows-amd64
+          name: lingma-proxy-desktop-v1.6.12-glm53fix2-windows-amd64
           path: |
-            lingma-proxy-desktop_v1.6.12-glm53fix1_windows_amd64.zip
-            lingma-proxy-desktop_v1.6.12-glm53fix1_windows_amd64.zip.sha256.txt
+            lingma-proxy-desktop_v1.6.12-glm53fix2_windows_amd64.zip
+            lingma-proxy-desktop_v1.6.12-glm53fix2_windows_amd64.zip.sha256.txt
           retention-days: 14
