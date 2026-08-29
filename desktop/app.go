@@ -216,6 +216,7 @@ func NewApp() *App {
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	startSystemTray(a)
 	a.cfg = defaultConfig()
 	if err := a.loadAppState(); err != nil {
 		runtime.LogWarningf(a.ctx, "failed to load app state: %v", err)
@@ -250,6 +251,19 @@ func (a *App) onSecondInstanceLaunch(secondInstanceData options.SecondInstanceDa
 // beforeClose hides the window by default so the proxy can keep running.
 // QuitApp sets quitting=true before allowing the process to exit.
 func (a *App) beforeClose(ctx context.Context) bool {
+	if goruntime.GOOS == "windows" {
+		a.mu.RLock()
+		quitting := a.quitting
+		a.mu.RUnlock()
+		if quitting {
+			return false
+		}
+
+		runtime.WindowHide(ctx)
+		a.emitLog("info", "主窗口已隐藏到系统托盘")
+		return true
+	}
+
 	if goruntime.GOOS == "linux" {
 		go a.forceQuit()
 		return true
@@ -258,7 +272,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	a.mu.Lock()
 	if a.quitting {
 		a.mu.Unlock()
-		return true
+		return false
 	}
 
 	now := time.Now()
