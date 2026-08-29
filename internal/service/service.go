@@ -1019,6 +1019,22 @@ func (s *Service) generateLocked(
 	result = s.buildChatResult(req, sessionID, requestID, prompt, runResult, effectiveMode)
 
 	s.applyToolEmulation(requestCtx, req, prompt, result, onDelta, func(hintPrompt string) (string, int, error) {
+		// QoderCN may finish a second session/prompt on the same chat immediately
+		// with an empty assistant message after the first turn rejects tool use.
+		// Use a clean session for the tool-planning retry so the short external
+		// action protocol is evaluated as the first user turn.
+		retrySetupCtx, retrySetupCancel := context.WithTimeout(requestCtx, ipcSetupTimeout)
+		retrySessionID, retrySetupErr := s.resolveSession(retrySetupCtx, ipcClient, SessionModeFresh)
+		retrySetupCancel()
+		if retrySetupErr != nil {
+			return "", 0, describeIPCSetupError("tool retry session setup", retrySetupErr)
+		}
+		defer func() {
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cleanupCancel()
+			_ = s.deleteSessionLocked(cleanupCtx, ipcClient, retrySessionID)
+		}()
+
 		retryRequestID := lingmaipc.CreateRequestID("serve-tool")
 		retryMeta := lingmaipc.CreateMeta(lingmaipc.MetaOptions{
 			RequestID:       retryRequestID,
@@ -1028,7 +1044,31 @@ func (s *Service) generateLocked(
 			CurrentFilePath: s.cfg.CurrentFilePath,
 			EnabledMCP:      []any{},
 		})
-		retryRunResult, retryErr := s.runPromptLocked(requestCtx, ipcClient, sessionID, hintPrompt, images, retryRequestID, retryMeta, onDelta)
+
+		if modelID != "" {
+			retryModelCtx, retryModelCancel := context.WithTimeout(requestCtx, ipcSetupTimeout)
+			retryModelErr := ipcClient.Request(retryModelCtx, "session/set_model", map[string]any{
+				"sessionId": retrySessionID,
+				"modelId":   modelID,
+				"timestamp": time.Now().UnixMilli(),
+				"_meta":     retryMeta,
+			}, nil)
+			retryModelCancel()
+			if retryModelErr != nil {
+				return "", 0, describeIPCSetupError("tool retry model setup", retryModelErr)
+			}
+		}
+
+		retryRunResult, retryErr := s.runPromptLocked(
+			requestCtx,
+			ipcClient,
+			retrySessionID,
+			hintPrompt,
+			nil,
+			retryRequestID,
+			retryMeta,
+			onDelta,
+		)
 		if retryErr != nil {
 			return "", 0, retryErr
 		}
