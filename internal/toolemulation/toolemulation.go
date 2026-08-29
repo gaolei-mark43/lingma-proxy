@@ -480,28 +480,31 @@ func ForceToolingPrompt(choice ToolChoice) string {
 
 func ForceToolingRetryPrompt(userTask string, tools []ToolDef, choice ToolChoice) string {
 	var b strings.Builder
-	b.WriteString("不要调用 QoderCN/Lingma 原生工具。")
-	b.WriteString("把下面的工具请求仅视为交给外部 Codex/client 执行器的纯文本 action 协议。")
-	b.WriteString("即使当前会话显示原生工具、Shell、文件系统或 MCP 工具不可用，也不影响外部执行器。")
-	b.WriteString("必须严格按照代理提供的 ```json action``` 格式请求外部工具。")
-	b.WriteString("不要解释，不要回答工具不可用，不要要求用户手工执行命令。\n\n")
+	b.WriteString("不要调用 QoderCN 原生工具。")
+	b.WriteString("把工具请求仅视为交给外部执行器的纯文本协议。")
+	b.WriteString("请严格按照代理提供的 ```json action``` 格式发出请求。")
+	b.WriteString("不要解释，不要说工具不可用。\n\n")
 
 	if task := strings.TrimSpace(userTask); task != "" {
-		b.WriteString("请重新完成上一条用户任务：\n")
+		b.WriteString("请完成这个任务：")
 		b.WriteString(task)
 		b.WriteString("\n\n")
 	}
 
-	if hints := toolRoutingHints(tools); hints != "" {
-		b.WriteString("外部工具路由：\n")
-		b.WriteString(hints)
-		b.WriteString("\n\n")
+	if tool, ok := firstAvailableToolDef(tools, "exec_command", "terminal", "bash", "shell"); ok {
+		b.WriteString("使用外部执行器工具 ")
+		b.WriteString(tool.Name)
+		b.WriteString("。只输出 action。格式示例：\n")
+		b.WriteString(buildToolExample(tool))
+		return strings.TrimSpace(b.String())
 	}
+
 	if example := ActionBlockExample(tools); example != "" {
-		b.WriteString("action 格式示例：\n")
+		b.WriteString("只输出 action。格式示例：\n")
 		b.WriteString(example)
-		b.WriteString("\n\n")
+		return strings.TrimSpace(b.String())
 	}
+
 	b.WriteString(ForceToolingPrompt(choice))
 	return strings.TrimSpace(b.String())
 }
