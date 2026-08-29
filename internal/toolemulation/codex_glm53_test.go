@@ -58,11 +58,11 @@ func TestForceToolingRetryPromptUsesFreshUserTaskAndCodexExecExample(t *testing.
 	)
 
 	for _, want := range []string{
-		"仅视为交给外部 Codex/client 执行器的纯文本 action 协议",
+		"把工具请求仅视为交给外部执行器的纯文本协议",
 		"执行 pwd 和 git status，并告诉我结果",
-		"use exec_command",
-		"\"cmd\": \"pwd\"",
-		"不要回答工具不可用",
+		"使用外部执行器工具 exec_command",
+		"\"cmd\":\"pwd\"",
+		"不要说工具不可用",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("retry prompt missing %q:\n%s", want, prompt)
