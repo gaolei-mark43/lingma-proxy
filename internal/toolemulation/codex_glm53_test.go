@@ -102,6 +102,8 @@ func TestLooksLikeRefusalRecognizesQoderNoToolMode(t *testing.T) {
 	for _, text := range []string{
 		"当前会话处于无工具可用模式。",
 		"当前会话没有可用的命令执行工具。",
+		"当前无法执行这两条命令。此会话处于无可执行工具的模式。",
+		"我不能真正运行 pwd 和 git status。",
 	} {
 		if !LooksLikeRefusal(text) {
 			t.Fatalf("LooksLikeRefusal(%q) = false", text)
