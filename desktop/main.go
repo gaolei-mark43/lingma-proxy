@@ -97,9 +97,15 @@ func appMenu(app *App) *menu.Menu {
 		app.MinimizeWindow()
 	})
 	appMenu.AddSeparator()
-	appMenu.AddText("退出 Lingma Proxy", quitAccelerator, func(_ *menu.CallbackData) {
-		app.RequestQuitShortcut()
-	})
+	if goruntime.GOOS == "windows" {
+		appMenu.AddText("隐藏到系统托盘", quitAccelerator, func(_ *menu.CallbackData) {
+			app.HideWindow()
+		})
+	} else {
+		appMenu.AddText("退出 Lingma Proxy", quitAccelerator, func(_ *menu.CallbackData) {
+			app.RequestQuitShortcut()
+		})
+	}
 
 	return menu.NewMenuFromItems(
 		menu.SubMenu("Lingma Proxy", appMenu),
